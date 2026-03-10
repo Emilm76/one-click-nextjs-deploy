@@ -184,30 +184,12 @@ ok "nginx and fail2ban enabled"
 log "Writing temporary nginx config"
 sudo tee "/etc/nginx/sites-available/$DOMAIN.conf" >/dev/null <<EOF
 server {
-    listen 80;
-    server_name $DOMAIN www.$DOMAIN;
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN www.$DOMAIN;
-
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-
-    server_tokens off;
-
-    location / {
-        proxy_pass http://127.0.0.1:$APP_PORT;
-        proxy_http_version 1.1;
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$host;
-    }
+  server_name $DOMAIN www.$DOMAIN;
+  location / {
+    include proxy_params;
+    proxy_pass http://127.0.0.1:$APP_PORT;
+  }
+  listen 80;
 }
 EOF
 
