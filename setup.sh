@@ -1,6 +1,37 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log() {
+  echo -e "${BLUE}==>${NC} $1"
+}
+
+ok() {
+  echo -e "${GREEN}✔${NC} $1"
+}
+
+warn() {
+  echo -e "${YELLOW}⚠${NC} $1"
+}
+
+err() {
+  echo -e "${RED}✘${NC} $1"
+}
+
+abort() {
+  err "$1"
+  exit 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || abort "Required command not found: $1"
+}
 
 read -rp "Domain (example.com): " DOMAIN
 read -rp "GitHub username: " GITHUB_USER
@@ -14,6 +45,15 @@ BRANCH="main"
 APP_PORT="3000"
 PM2_NAME="next"
 NVM_VERSION="v0.39.7"
+REPO_SSH_URL="git@github.com:$GITHUB_USER/$GITHUB_REPO.git"
+
+if [ -z "$DOMAIN" ] || [ -z "$GITHUB_USER" ] || [ -z "$GITHUB_REPO" ]; then
+  abort "All input values are required."
+fi
+
+if ! id "$APP_USER" >/dev/null 2>&1; then
+  abort "User '$APP_USER' does not exist."
+fi
 
 if [ "$(id -u)" -eq 0 ]; then
   RUN_USER="$APP_USER"
@@ -23,7 +63,6 @@ fi
 
 RUN_HOME="$(eval echo "~$RUN_USER")"
 NVM_DIR="$RUN_HOME/.nvm"
-GIT_SSH_URL="git@github.com:$GITHUB_USER/$GITHUB_REPO.git"
 
 run_as_user() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -33,16 +72,35 @@ run_as_user() {
   fi
 }
 
-echo "==> Updating apt"
+log "Checking required commands"
+require_command sudo
+require_command apt
+require_command ssh
+require_command git
+require_command curl
+ok "Base requirements are available"
+
+log "Updating apt package index"
 sudo apt update
+ok "apt updated"
 
-echo "==> Installing system packages"
-sudo apt install -y curl git ufw nginx fail2ban unattended-upgrades certbot python3-certbot-nginx
+log "Installing system packages"
+sudo apt install -y \
+  curl \
+  git \
+  ufw \
+  nginx \
+  fail2ban \
+  unattended-upgrades \
+  certbot \
+  python3-certbot-nginx
+ok "System packages installed"
 
-echo "==> Installing NVM"
+log "Installing NVM"
 run_as_user "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh | bash"
+ok "NVM installed"
 
-echo "==> Installing Node.js LTS with NVM"
+log "Installing Node.js LTS and PM2"
 run_as_user "
   export NVM_DIR=\"$NVM_DIR\"
   [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"
@@ -50,19 +108,34 @@ run_as_user "
   nvm install --lts
   npm install -g pm2
 "
+ok "Node.js LTS and PM2 installed"
 
-echo "==> Cloning repository"
-if [ -d "$APP_DIR" ]; then
-  echo "Directory $APP_DIR already exists"
-  exit 1
+log "Checking GitHub SSH access"
+if ! run_as_user "ssh -T -o StrictHostKeyChecking=accept-new git@github.com" >/tmp/github_ssh_check.txt 2>&1; then
+  if grep -qi "successfully authenticated" /tmp/github_ssh_check.txt; then
+    ok "GitHub SSH authentication works"
+  else
+    cat /tmp/github_ssh_check.txt
+    abort "GitHub SSH authentication failed. Add this server SSH key to GitHub deploy keys first."
+  fi
+else
+  ok "GitHub SSH authentication works"
 fi
 
+if [ -e "$APP_DIR" ]; then
+  abort "Directory already exists: $APP_DIR"
+fi
+
+log "Preparing app directory"
 sudo mkdir -p "$APP_HOME"
-sudo chown -R "$RUN_USER:$RUN_USER" "$APP_HOME"
+sudo chown -R "$APP_USER:$APP_USER" "$APP_HOME"
+ok "App home is ready"
 
-run_as_user "git clone \"$GIT_SSH_URL\" \"$APP_DIR\""
+log "Cloning repository"
+run_as_user "git clone \"$REPO_SSH_URL\" \"$APP_DIR\""
+ok "Repository cloned into $APP_DIR"
 
-echo "==> Installing dependencies and building app"
+log "Installing app dependencies and building"
 run_as_user "
   cd \"$APP_DIR\"
   export NVM_DIR=\"$NVM_DIR\"
@@ -71,8 +144,9 @@ run_as_user "
   npm install
   npm run build
 "
+ok "App installed and built"
 
-echo "==> Starting app with PM2"
+log "Starting app with PM2"
 run_as_user "
   cd \"$APP_DIR\"
   export NVM_DIR=\"$NVM_DIR\"
@@ -81,28 +155,34 @@ run_as_user "
   pm2 start npm --name \"$PM2_NAME\" -- start
   pm2 save
 "
+ok "PM2 app started"
 
-echo "==> Enabling PM2 startup"
-NODE_BIN_PATH="$(sudo -u "$RUN_USER" -H bash -lc "
+log "Configuring PM2 startup"
+PM2_BIN="$(run_as_user "
   export NVM_DIR=\"$NVM_DIR\"
   [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"
   command -v pm2
 ")"
 
-sudo su -c "env PATH=$PATH:$(dirname "$NODE_BIN_PATH") pm2 startup systemd -u $RUN_USER --hp $RUN_HOME"
+PM2_BIN_DIR="$(dirname "$PM2_BIN")"
 
-echo "==> Configuring firewall"
+sudo su -c "env PATH=$PATH:$PM2_BIN_DIR pm2 startup systemd -u $RUN_USER --hp $RUN_HOME"
+ok "PM2 startup configured"
+
+log "Configuring firewall"
 sudo ufw allow ssh
 sudo ufw allow http
 sudo ufw allow https
 sudo ufw --force enable
+ok "Firewall configured"
 
-echo "==> Enabling services"
+log "Enabling services"
 sudo systemctl enable --now nginx
 sudo systemctl enable --now fail2ban
+ok "nginx and fail2ban enabled"
 
-echo "==> Writing Nginx config"
-sudo tee "/etc/nginx/sites-available/$DOMAIN.conf" > /dev/null <<EOF
+log "Writing temporary nginx config"
+sudo tee "/etc/nginx/sites-available/$DOMAIN.conf" >/dev/null <<EOF
 server {
     listen 80;
     server_name $DOMAIN www.$DOMAIN;
@@ -137,48 +217,17 @@ fi
 
 sudo nginx -t
 sudo systemctl reload nginx
+ok "nginx config loaded"
 
-echo "==> Requesting SSL certificate"
+log "Requesting SSL certificate"
 sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
+ok "SSL certificate installed"
 
-echo "==> Rewriting Nginx config after certbot"
-sudo tee "/etc/nginx/sites-available/$DOMAIN.conf" > /dev/null <<EOF
-server {
-    listen 80;
-    server_name $DOMAIN www.$DOMAIN;
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $DOMAIN www.$DOMAIN;
-
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-
-    server_tokens off;
-
-    location / {
-        proxy_pass http://127.0.0.1:$APP_PORT;
-        proxy_http_version 1.1;
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$host;
-    }
-}
-EOF
-
-sudo nginx -t
-sudo systemctl reload nginx
-
-echo "==> Creating deploy.sh"
-sudo tee "$DEPLOY_SCRIPT" > /dev/null <<EOF
+log "Rewriting final deploy.sh"
+sudo tee "$DEPLOY_SCRIPT" >/dev/null <<EOF
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 cd "$APP_DIR"
 
@@ -195,7 +244,11 @@ EOF
 
 sudo chmod +x "$DEPLOY_SCRIPT"
 sudo chown "$APP_USER:$APP_USER" "$DEPLOY_SCRIPT"
+ok "deploy.sh created at $DEPLOY_SCRIPT"
 
-echo "==> Done"
+echo
+ok "Setup complete"
+echo "Domain: $DOMAIN"
+echo "Repository: $REPO_SSH_URL"
 echo "App directory: $APP_DIR"
 echo "Deploy script: $DEPLOY_SCRIPT"
