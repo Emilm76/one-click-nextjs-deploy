@@ -33,6 +33,8 @@ sudo nano /etc/ssh/sshd_config
   # PasswordAuthentication no
 sudo systemctl restart ssh
 
+# Теперь можно подключаться без пароля ssh admin@domain.com
+
 ssh-keygen
 cat .ssh/id_ed25519.pub
   # Добавте ключ в github Deploy keys
