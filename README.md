@@ -45,6 +45,7 @@ cat .ssh/id_rsa.pub
    ```bash
    cd ~
    git clone https://github.com/Emilm76/one-click-nextjs-deploy.git
+   cd ./one-click-nextjs-deploy
    ```
 2. Дайте права на выполнение:
 
