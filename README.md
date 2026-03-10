@@ -23,7 +23,7 @@
 adduser admin
 usermod -aG sudo admin
 
-# Локально на пк (замените domain.com на свой)
+# Локально на пк (замените domain.com на домен или IP сервера)
 ssh-keygen
 ssh-copy-id admin@domain.com
 
@@ -41,6 +41,11 @@ cat .ssh/id_rsa.pub
 ## Как запустить
 
 1. Скопируйте скрипт на сервер.
+
+   ```bash
+   cd ~
+   git clone https://github.com/Emilm76/one-click-nextjs-deploy.git
+   ```
 2. Дайте права на выполнение:
 
    ```bash
