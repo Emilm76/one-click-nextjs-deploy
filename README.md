@@ -34,7 +34,7 @@ sudo nano /etc/ssh/sshd_config
 sudo systemctl restart ssh
 
 ssh-keygen
-cat .ssh/id_rsa.pub
+cat .ssh/id_ed25519.pub
   # Добавте ключ в github Deploy keys
 ````
 
