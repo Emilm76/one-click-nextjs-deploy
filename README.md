@@ -27,13 +27,13 @@ usermod -aG sudo admin
 ssh-keygen
 ssh-copy-id admin@domain.com
 
+# Теперь можно подключаться без пароля ssh admin@domain.com
+
 # На сервере
 sudo nano /etc/ssh/sshd_config
   # PermitRootLogin no
   # PasswordAuthentication no
 sudo systemctl restart ssh
-
-# Теперь можно подключаться без пароля ssh admin@domain.com
 
 ssh-keygen
 cat .ssh/id_ed25519.pub
