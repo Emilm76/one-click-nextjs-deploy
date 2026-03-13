@@ -37,8 +37,8 @@ sudo systemctl restart ssh
 
 ssh-keygen
 cat .ssh/id_ed25519.pub
-  # Добавте ключ в github Deploy keys
-````
+  # Добавьте ключ в GitHub Deploy keys
+```
 
 ## Как запустить
 
@@ -72,11 +72,13 @@ cat .ssh/id_ed25519.pub
 Скрипт рассчитан на:
 
 * пользователя `admin`
-* путь проекта: `/home/admin/repo`
+* путь проекта: `/home/admin/<repo-name>`
 * файл деплоя: `/home/admin/deploy.sh`
 * ветку: `main`
 
-Скрипт можно запускать **от `admin` или `root`**.
+Скрипт нужно запускать **от `admin` или `root`**.
+Если `nvm` уже установлен у пользователя `admin`, скрипт переиспользует его и не устанавливает повторно.
+Репозиторий клонируется внутрь домашней директории `admin`, как при обычном `cd /home/admin && git clone ...`.
 
 ## Повторный деплой
 
