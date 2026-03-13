@@ -46,6 +46,7 @@ cat .ssh/id_ed25519.pub
 
    ```bash
    cd ~
+   sudo apt update && sudo apt install git
    git clone https://github.com/Emilm76/one-click-nextjs-deploy.git
    cd ./one-click-nextjs-deploy
    ```
