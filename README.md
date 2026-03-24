@@ -3,82 +3,79 @@
 Скрипт предназначен для **деплоя простого Next.js проекта на VPS** под **Ubuntu / Debian**.
 
 Он автоматизирует:
-- клонирование репозитория из GitHub по SSH
-- установку **NVM**
-- установку **Node.js LTS**
+- Добавление swap
+- установку **Node.js** и **NPM**
 - установку зависимостей и сборку проекта
-- запуск приложения через **PM2**
-- настройку автозапуска **PM2**
+- запуск через **PM2**
 - настройку **UFW**
+- настройку **fail2ban**
 - установку и настройку **Nginx**
 - выпуск SSL-сертификата через **Certbot**
-- создание файла `/home/admin/deploy.sh` для последующих деплоев
+- создание файла `deploy.sh` для последующих деплоев
 
 ## Что должно быть сделано вручную заранее
 
-Перед запуском скрипта нужно вручную выполнить базовую настройку сервера и SSH.
+Перед запуском скрипта нужно вручную выполнить базовую настройку сервера, SSH и склонировать репозиторий.
 
 ```bash
-# На сервере
+# Подключение
+ssh root@<DOMAIN>
+
+# Создать пользователя admin
 adduser admin
 usermod -aG sudo admin
+exit
 
-# Локально на пк (замените domain.com на домен или IP сервера)
+# (Локально на пк) генерируем ssh, если еще нет
 ssh-keygen
-ssh-copy-id admin@domain.com
+# Добавляем ssh на сервер
+ssh-copy-id admin@<DOMAIN>
 
-# Теперь можно подключаться без пароля ssh admin@domain.com
-
-# На сервере
+# (На сервере) Запрещаем подключаться через root
+ssh admin@<DOMAIN>
 sudo nano /etc/ssh/sshd_config
-  # PermitRootLogin no
-  # PasswordAuthentication no
+```
+
+Привести к такому виду:
+```text
+PermitRootLogin no
+PasswordAuthentication no
+```
+
+```bash
+# Перезапускаем ssh
 sudo systemctl restart ssh
 
+# Подключаться теперь так: ssh admin@teroks.ru
+
+# Генерируем ssh (для клонирования репо git)
 ssh-keygen
 cat .ssh/id_ed25519.pub
-  # Добавьте ключ в GitHub Deploy keys
+# добавляем ключ в Deploy keys на github
+
+# Клонируем репо через ssh
+sudo apt update && sudo apt upgrade -y && sudo apt install git -y
+git clone <SSH_ссылка>
+
+# Если нужно:
+	# - создать .env
+	# - создать БД
 ```
 
 ## Как запустить
 
-1. Скопируйте скрипт на сервер.
-
-   ```bash
-   cd ~
-   sudo apt update && sudo apt install git
-   git clone https://github.com/Emilm76/one-click-nextjs-deploy.git
-   cd ./one-click-nextjs-deploy
-   ```
-2. Дайте права на выполнение:
-
-   ```bash
-   chmod +x setup.sh
-   ```
-3. Запустите:
-
-   ```bash
-   ./setup.sh
-   ```
+```bash
+sudo apt update && sudo apt upgrade -y && sudo apt install git -y
+cd ~
+sudo curl -o- https://raw.githubusercontent.com/Emilm76/one-click-nextjs-deploy/refs/heads/main/setup.sh | bash
+```
 
 Во время запуска скрипт попросит ввести:
 
+* имя пользователя linux (admin)
+* ваш IP
 * домен
-* GitHub username
 * GitHub repository name
-
-## Важно
-
-Скрипт рассчитан на:
-
-* пользователя `admin`
-* путь проекта: `/home/admin/<repo-name>`
-* файл деплоя: `/home/admin/deploy.sh`
-* ветку: `main`
-
-Скрипт нужно запускать **от `admin` или `root`**.
-Если `nvm` уже установлен у пользователя `admin`, скрипт переиспользует его и не устанавливает повторно.
-Репозиторий клонируется внутрь домашней директории `admin`, как при обычном `cd /home/admin && git clone ...`.
 
 ## Повторный деплой
 
