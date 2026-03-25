@@ -45,7 +45,7 @@ PasswordAuthentication no
 # Перезапускаем ssh
 sudo systemctl restart ssh
 
-# Подключаться теперь так: ssh admin@teroks.ru
+# Подключаться теперь так: ssh admin@<DOMAIN>
 
 # Генерируем ssh (для клонирования репо git)
 ssh-keygen

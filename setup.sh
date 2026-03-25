@@ -113,8 +113,10 @@ ok "Swap file enabled"
 
 # Install nvm
 sudo curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-# Load nvm
-source ~/.bashrc
+# Load nvm without sourcing the interactive shell config.
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
 # Install the latest LTS version of Node.js
 nvm install --lts
 ok "Node.js and NPM installed"
