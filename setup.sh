@@ -59,7 +59,7 @@ read_prompt() {
   printf -v "$var_name" '%s' "$value"
 }
 
-read_prompt "OS user (admin): " OS_USER
+read_prompt "OS user (deploy): " OS_USER
 read_prompt "Your IP (for ignore in fail2ban): " USER_IP
 read_prompt "Domain (example.com): " DOMAIN
 read_prompt "GitHub repository name: " GITHUB_REPO

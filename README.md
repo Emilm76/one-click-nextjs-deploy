@@ -22,18 +22,18 @@
 # Подключение
 ssh root@<DOMAIN>
 
-# Создать пользователя admin
-adduser admin
-usermod -aG sudo admin
+# Создать пользователя deploy
+adduser deploy
+usermod -aG sudo deploy
 exit
 
 # (Локально на пк) генерируем ssh, если еще нет
 ssh-keygen
 # Добавляем ssh на сервер
-ssh-copy-id admin@<DOMAIN>
+ssh-copy-id deploy@<DOMAIN>
 
 # (На сервере) Запрещаем подключаться через root и паролю
-ssh admin@<DOMAIN>
+ssh deploy@<DOMAIN>
 sudo nano /etc/ssh/sshd_config
 ```
 
@@ -47,7 +47,7 @@ PasswordAuthentication no
 # Перезапускаем ssh
 sudo systemctl restart ssh
 
-# Подключаться теперь так: ssh admin@<DOMAIN>
+# Подключаться теперь так: ssh deploy@<DOMAIN>
 
 # Генерируем ssh (для клонирования репо git)
 ssh-keygen
@@ -73,7 +73,7 @@ bash ./setup.sh
 
 Во время запуска скрипт попросит ввести:
 
-* имя пользователя linux (admin)
+* имя пользователя linux (deploy)
 * ваш IP
 * домен
 * GitHub repository name
