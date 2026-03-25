@@ -24,6 +24,14 @@ abort() {
   exit 1
 }
 
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || abort "Required command not found: $1"
 }
@@ -103,53 +111,100 @@ else
   require_command sudo
 fi
 
-# Добавляем swap
-sudo dd if=/dev/zero of=/swap bs=1M count=1024
-sudo chmod 600 /swap && sudo mkswap /swap
-sudo swapon /swap
+USER_HOME="$(getent passwd "$OS_USER" | cut -d: -f6)"
+REPO_DIR="$USER_HOME/$GITHUB_REPO"
+NVM_DIR="$USER_HOME/.nvm"
 
-echo "/swap none swap sw 0 0"| sudo tee -a /etc/fstab
-ok "Swap file enabled"
+if [ -z "$USER_HOME" ]; then
+  abort "Could not determine home directory for '$OS_USER'."
+fi
+
+run_as_os_user() {
+  local command="$1"
+
+  if [ "$(id -un)" = "$OS_USER" ]; then
+    HOME="$USER_HOME" bash -lc "$command"
+  else
+    runuser -u "$OS_USER" -- env HOME="$USER_HOME" bash -lc "$command"
+  fi
+}
+
+if [ ! -d "$REPO_DIR" ]; then
+  abort "Repository directory not found: $REPO_DIR"
+fi
+
+if [ ! -d "$REPO_DIR/.git" ]; then
+  abort "Directory exists but is not a git repository: $REPO_DIR"
+fi
+
+log "Installing system packages"
+as_root apt-get update
+as_root apt-get install -y ufw fail2ban nginx certbot python3-certbot-nginx
+ok "System packages installed"
+
+# Добавляем swap
+if swapon --show=NAME --noheadings 2>/dev/null | grep -Fxq "/swap"; then
+  ok "Swap file already enabled"
+else
+  if [ ! -f /swap ]; then
+    log "Creating swap file"
+    as_root dd if=/dev/zero of=/swap bs=1M count=1024 status=none
+  else
+    log "Reusing existing /swap file"
+  fi
+
+  as_root chmod 600 /swap
+  as_root mkswap /swap >/dev/null
+  as_root swapon /swap
+
+  if ! grep -Eq '^/swap[[:space:]]+none[[:space:]]+swap[[:space:]]+sw[[:space:]]+0[[:space:]]+0$' /etc/fstab; then
+    echo "/swap none swap sw 0 0" | as_root tee -a /etc/fstab >/dev/null
+  fi
+
+  ok "Swap file enabled"
+fi
 
 # Install nvm
-sudo curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-# Load nvm without sourcing the interactive shell config.
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
-# Install the latest LTS version of Node.js
-nvm install --lts
+if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+  log "Installing nvm for $OS_USER"
+  run_as_os_user "curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
+else
+  ok "nvm already installed"
+fi
+
+run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; nvm install --lts >/dev/null"
 ok "Node.js and NPM installed"
 
+NODE_BIN_DIR="$(dirname "$(run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; nvm which current")")"
+PM2_BIN="$NODE_BIN_DIR/pm2"
+
 # Установка зависимостей
-cd ~/$GITHUB_REPO
-npm ci
-npm run build
+log "Installing app dependencies and building project"
+run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; cd '$REPO_DIR'; npm ci; npm run build"
 ok "App installed and built"
 
 # Авто-запуск npm run start (в папке проекта)
-npm install -g pm2
-pm2 start npm --name next -- start
-pm2 startup
-pm2 save
-
-sudo env PATH=$PATH:/home/$OS_USER/.nvm/versions/node/v24.14.0/bin /home/$OS_USER/.nvm/versions/node/v24.14.0/lib/node_modules/pm2/bin/pm2 startup systemd -u $OS_USER --hp /home/$OS_USER
+run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; npm install -g pm2"
+if run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; pm2 describe next >/dev/null 2>&1"; then
+  run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; cd '$REPO_DIR'; pm2 restart next --update-env"
+else
+  run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; cd '$REPO_DIR'; pm2 start npm --name next -- start"
+fi
+run_as_os_user "export NVM_DIR='$NVM_DIR'; . '$NVM_DIR/nvm.sh'; pm2 save"
+as_root env PATH="$PATH:$NODE_BIN_DIR" "$PM2_BIN" startup systemd -u "$OS_USER" --hp "$USER_HOME"
 ok "PM2 app started and startup configured"
 
-# Настраеваем фаервол
-sudo apt-get install ufw
-
-sudo ufw allow ssh
-sudo ufw allow http
-sudo ufw allow https
-sudo ufw allow 22/tcp
-sudo ufw enable
-sudo ufw reload
+# Настраиваем фаервол
+as_root ufw allow ssh
+as_root ufw allow http
+as_root ufw allow https
+as_root ufw allow 22/tcp
+as_root ufw --force enable
+as_root ufw reload
 ok "Firewall configured"
 
 # fail2ban
-sudo apt install fail2ban
-sudo tee /etc/fail2ban/jail.local > /dev/null <<EOF
+as_root tee /etc/fail2ban/jail.local > /dev/null <<EOF
 [DEFAULT]
 ignoreip = $USER_IP
 
@@ -159,16 +214,12 @@ findtime = 120
 maxretry = 3
 bantime = 43200
 EOF
-# Перезапустить
-sudo systemctl restart fail2ban.service
+as_root systemctl enable --now fail2ban.service
+as_root systemctl restart fail2ban.service
 ok "fail2ban enabled"
 
 # nginx прокси сервер
-sudo apt install nginx
-
-sudo systemctl is-enabled nginx
-
-sudo tee /etc/nginx/sites-available/$DOMAIN.conf > /dev/null <<EOF
+as_root tee /etc/nginx/sites-available/$DOMAIN.conf > /dev/null <<EOF
 server {
     server_name $DOMAIN;
 
@@ -181,32 +232,37 @@ server {
 }
 EOF
 
-sudo ln -s /etc/nginx/sites-available/$DOMAIN.conf /etc/nginx/sites-enabled/
-# Тестируем конфигурацию
-sudo nginx -t
-# Перезапускаем nginx
-sudo nginx -s reload
+as_root ln -sfn /etc/nginx/sites-available/$DOMAIN.conf /etc/nginx/sites-enabled/$DOMAIN.conf
+as_root systemctl enable --now nginx
+as_root nginx -t
+as_root systemctl reload nginx
 ok "nginx config loaded"
 
 # Настраиваем https
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d $DOMAIN
-ok "SSL certificate installed"
+if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+  ok "SSL certificate already installed"
+else
+  as_root certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
+  ok "SSL certificate installed"
+fi
 
 # Создаем deploy.sh
-tee ~/deploy.sh > /dev/null <<EOF
+run_as_os_user "cat > '$USER_HOME/deploy.sh' <<'EOF'
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-cd ~/$GITHUB_REPO
+export NVM_DIR=\"$NVM_DIR\"
+[ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+
+cd \"$REPO_DIR\"
 git pull
 npm ci
 npm run build
 pm2 reload next
 EOF
+"
 
-# Дать права файлу:
-chmod +x ./deploy.sh
+chmod +x "$USER_HOME/deploy.sh"
 
 ok "deploy.sh created"
 
