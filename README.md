@@ -54,7 +54,7 @@ cat .ssh/id_ed25519.pub
 
 # Клонируем репо через ssh
 sudo apt update && sudo apt upgrade -y && sudo apt install git -y
-git clone <SSH_ссылка>
+git clone <SSH_ссылка_на_репозиторий>
 
 # Если нужно:
 	# - создать .env
@@ -64,9 +64,9 @@ git clone <SSH_ссылка>
 ## Как запустить
 
 ```bash
-sudo apt update && sudo apt upgrade -y && sudo apt install git -y
 cd ~
-sudo curl -o- https://raw.githubusercontent.com/Emilm76/one-click-nextjs-deploy/refs/heads/main/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Emilm76/one-click-nextjs-deploy/refs/heads/main/setup.sh -o setup.sh
+bash ./setup.sh
 ```
 
 Во время запуска скрипт попросит ввести:

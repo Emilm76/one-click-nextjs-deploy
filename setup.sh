@@ -35,10 +35,26 @@ trim() {
   printf '%s' "$value"
 }
 
-read -rp "OS user (admin): " OS_USER
-read -rp "Your IP (for ignore in fail2ban): " USER_IP
-read -rp "Domain (example.com): " DOMAIN
-read -rp "GitHub repository name: " GITHUB_REPO
+read_prompt() {
+  local prompt="$1"
+  local var_name="$2"
+  local value=""
+
+  # When the script is piped into bash, stdin is occupied by the script itself,
+  # so interactive prompts must read from the controlling terminal instead.
+  if [[ -r /dev/tty ]]; then
+    read -r -p "$prompt" value < /dev/tty || abort "Failed to read input for $var_name."
+  else
+    read -r -p "$prompt" value || abort "Failed to read input for $var_name."
+  fi
+
+  printf -v "$var_name" '%s' "$value"
+}
+
+read_prompt "OS user (admin): " OS_USER
+read_prompt "Your IP (for ignore in fail2ban): " USER_IP
+read_prompt "Domain (example.com): " DOMAIN
+read_prompt "GitHub repository name: " GITHUB_REPO
 
 OS_USER="$(trim "$OS_USER")"
 USER_IP="$(trim "$USER_IP")"
