@@ -255,7 +255,8 @@ export NVM_DIR=\"$NVM_DIR\"
 [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
 
 cd \"$REPO_DIR\"
-git pull
+git fetch origin
+git reset --hard origin/main
 npm ci
 npm run build
 pm2 reload next
