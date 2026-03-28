@@ -242,7 +242,7 @@ ok "nginx config loaded"
 if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
   ok "SSL certificate already installed"
 else
-  as_root certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
+  as_root certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect
   ok "SSL certificate installed"
 fi
 
