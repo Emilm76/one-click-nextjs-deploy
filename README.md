@@ -62,8 +62,9 @@ sudo apt update && sudo apt upgrade -y && sudo apt install git -y
 git clone <SSH_ссылка_на_репозиторий>
 
 # Если нужно:
-	# - создать .env
 	# - создать БД
+	# - создать .env
+	# - запустить миграцию БД
 ```
 
 ## Как запустить
